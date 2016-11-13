@@ -10,6 +10,7 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_wxagg import \
      FigureCanvasWxAgg as FigCanvas, \
      NavigationToolbar2WxAgg as NavigationToolbar
+#from matplotlib.pyplot import figure, show
 import numpy as np
 import pylab
 import PySide
@@ -20,46 +21,159 @@ import thread
 import time
 from classes.Data import GetData
 
+class ZoomPan:
+    def __init__(self):
+        self.press = None
+        self.cur_xlim = None
+        self.cur_ylim = None
+        self.x0 = None
+        self.y0 = None
+        self.x1 = None
+        self.y1 = None
+        self.xpress = None
+        self.ypress = None
 
-#class graph:
-#    def __init__(self, size_hor, size_ver, title):
-#        self.dpi = 100
-#        self.size_hor = size_hor
-#        self.size_ver = size_ver
-#        self.title = title
-#        self.getdata = GetData()
+
+    def zoom_factory(self, ax, base_scale = 2.):
+        def zoom(event):
+            cur_xlim = ax.get_xlim()
+            cur_ylim = ax.get_ylim()
+
+            xdata = event.xdata # get event x location
+            ydata = event.ydata # get event y location
+
+            if event.button == 'down':
+                # deal with zoom in
+                scale_factor = 1 / base_scale
+            elif event.button == 'up':
+                # deal with zoom out
+                scale_factor = base_scale
+            else:
+                # deal with something that should never happen
+                scale_factor = 1
+                print event.button
+
+            new_width = (cur_xlim[1] - cur_xlim[0]) * scale_factor
+            new_height = (cur_ylim[1] - cur_ylim[0]) * scale_factor
+
+            relx = (cur_xlim[1] - xdata)/(cur_xlim[1] - cur_xlim[0])
+            rely = (cur_ylim[1] - ydata)/(cur_ylim[1] - cur_ylim[0])
+
+            ax.set_xlim([xdata - new_width * (1-relx), xdata + new_width * (relx)])
+            ax.set_ylim([ydata - new_height * (1-rely), ydata + new_height * (rely)])
+            ax.figure.canvas.draw()
+
+        fig = ax.get_figure() # get the figure of interest
+        fig.canvas.mpl_connect('scroll_event', zoom)
+
+        return zoom
+
+    def pan_factory(self, ax):
+        def onPress(event):
+            if event.inaxes != ax: return
+            self.cur_xlim = ax.get_xlim()
+            self.cur_ylim = ax.get_ylim()
+            self.press = self.x0, self.y0, event.xdata, event.ydata
+            self.x0, self.y0, self.xpress, self.ypress = self.press
+
+        def onRelease(event):
+            self.press = None
+            ax.figure.canvas.draw()
+
+        def onMotion(event):
+            if self.press is None: return
+            if event.inaxes != ax: return
+            dx = event.xdata - self.xpress
+            dy = event.ydata - self.ypress
+            self.cur_xlim -= dx
+            self.cur_ylim -= dy
+            ax.set_xlim(self.cur_xlim)
+            ax.set_ylim(self.cur_ylim)
+
+            ax.figure.canvas.draw()
+
+        fig = ax.get_figure() # get the figure of interest
+
+        # attach the call back
+        fig.canvas.mpl_connect('button_press_event',onPress)
+        fig.canvas.mpl_connect('button_release_event',onRelease)
+        fig.canvas.mpl_connect('motion_notify_event',onMotion)
+
+        #return the function
+        return onMotion       
+
+#class ZoomPan:
+#    def __init__(self):
+#        self.press = None
+#        self.curxlim = None
+#        self.curylim = None
+#        self.x1 = None
+#        self.x2 = None
+#        self.y1 = None
+#        self.y2 = None
+#        self.xpress = None
+#        self.ypress = None
+#                    
+#    def zoom_factory(self, ax, base_scale = 2.):
+#        def zoom_fun(event):
+#            cur_xlim=self.axes.get_xlim()
+#            cur_ylim=self.axes.get_xylim()
+#            xdata = event.xdata
+#            ydata = event.ydata
+#            
+#            if event.button == 'down':
+#                scale_factor = 1 / base_scale
+#            elif event.button == 'up':
+#                scale_factor = base_scale
+#            else:
+#                scale_factor = 1
+#                print event.button
+#            new_width = (cur_xlim[1] - cur_xlim[0]) * scale_factor
+#            new_height = (cur_ylim[1] - cur_ylim[0]) * scale_factor
+#            
+#            relx = (cur_xlim[1] - xdata)/(cur_xlim[1] - cur_xlim[0])
+#            rely = (cur_ylim[1] - ydata)/(cur_ylim[1] - cur_ylim[0])
+#            ax.set_xlim([xdata - new_width * (1-relx), xdata + new_width * (relx)])
+#            ax.set_ylim([ydata - new_height * (1-rely), ydata + new_height * (rely)])
+#            ax.figure.canvas.draw()
+#        fig2 = ax.get_figure()
+#        fig2.canvas.mpl_connect('scroll_event', zoom)
 #        
-#    def init_plot(self):
-#        self.fig2 = Figure((self.size_hor, self.size_ver), dpi=self.dpi)
-#       
-#        self.axes = self.fig2.add_subplot(111)
-#        self.axes.set_axis_bgcolor('black')
-#        self.axes.set_title(self.title, size=20)
-#        self.bottom_x = [self.getdata.Data_bottom_x()]
-#        self.bottom_y = [self.getdata.Data_bottom_y()]
-#        pylab.setp(self.axes.get_xticklabels(), fontsize=6)
-#        pylab.setp(self.axes.get_yticklabels(), fontsize=6)
-#        self.plot_data = self.axes.plot(self.bottom_x, self.bottom_y,linewidth=1,color=(1 , 0, 1)) [0]
-#  
-#    def figure(self):
-#        return self.fig2
-#        
-#    def draw_plot(self):
-#            pylab.setp(self.axes.get_xticklabels(),
-#                visible=self.cb_xlab.IsChecked())
-#            self.plot_data.set_xdata(self.bottom_x)
-#            self.plot_data.set_ydata(self.bottom_y)  
-#            self.canvas_bottom.draw()
-
-        
-
-        
-
-        
-
-
-        
-        
+#        return zoom   
+#             
+#    def pan_factory(self, ax):
+#        def onPress(event):
+#            if event.inaxes != ax: return
+#            self.cur_xlim = ax.get_xlim()
+#            self.cur_ylim = ax.get_ylim()
+#            self.press = self.x1, self.y1, event.xdata, event.ydata
+#            self.x1, self.y1, self.xpress, self.ypress = self.press
+#
+#        def onRelease(event):
+#            self.press = None
+#            ax.figure.canvas.draw()
+#
+#        def onMotion(event):
+#            if self.press is None: return
+#            if event.inaxes != ax: return
+#            dx = event.xdata - self.xpress
+#            dy = event.ydata - self.ypress
+#            self.cur_xlim -= dx
+#            self.cur_ylim -= dy
+#            ax.set_xlim(self.cur_xlim)
+#            ax.set_ylim(self.cur_ylim)
+#
+#            ax.figure.canvas.draw()
+#
+#        fig2 = ax.get_figure() # get the figure of interest
+#
+#        # attach the call back
+#        fig2.canvas.mpl_connect('button_press_event',onPress)
+#        fig2.canvas.mpl_connect('button_release_event',onRelease)
+#        fig2.canvas.mpl_connect('motion_notify_event',onMotion)
+#
+#        #return the function
+#        return onMotion 
     
 class main_frame(wx.Frame): #Main frame
 
@@ -314,7 +428,7 @@ class main_frame(wx.Frame): #Main frame
     def init_plot(self):
         self.dpi = 100
         self.fig = Figure((3.0, 3.0), dpi=self.dpi)
-        self.axes = self.fig.add_subplot(211)
+        self.axes = self.fig.add_subplot(111)
         self.axes.set_axis_bgcolor('black')
         self.axes.set_title('Current', size=20)
 
@@ -323,16 +437,18 @@ class main_frame(wx.Frame): #Main frame
         
         self.axes.grid(True, color='white')
         self.plot_data = self.axes.plot(self.x, self.y,linewidth=1,color=(1 , 0, 1)) [0]
-        
-            
-        self.axes2 = self.fig.add_subplot(212)
-        self.axes2.set_title('Voltage', size=20)
-        self.axes2.set_axis_bgcolor('black')
-        pylab.setp(self.axes2.get_xticklabels(), fontsize=6)
-        pylab.setp(self.axes2.get_yticklabels(), fontsize=6)
-        
-        self.axes2.grid(True, color='white')
-        self.plot_data2 = self.axes2.plot(self.bottom_x, self.bottom_y,linewidth=1,color=(1 , 0, 1)) [0]
+        scale = 1.1
+        zp = ZoomPan()
+        figZoom = zp.zoom_factory(self.axes, base_scale = scale)
+        figPan = zp.pan_factory(self.axes)  
+        #self.axes2 = self.fig.add_subplot(212)
+        #self.axes2.set_title('Voltage', size=20)
+        #self.axes2.set_axis_bgcolor('black')
+        #pylab.setp(self.axes2.get_xticklabels(), fontsize=6)
+        #pylab.setp(self.axes2.get_yticklabels(), fontsize=6)
+        #
+        #self.axes2.grid(True, color='white')
+        #self.plot_data2 = self.axes2.plot(self.bottom_x, self.bottom_y,linewidth=1,color=(1 , 0, 1)) [0]
             
         
     def draw_plot(self):
@@ -361,7 +477,9 @@ class main_frame(wx.Frame): #Main frame
             self.plot_data2.set_xdata(self.bottom_x)
             self.plot_data2.set_ydata(self.bottom_y) 
             self.canvas.draw() 
+            
 
+    
     
     
     def on_pause_button(self, event):
